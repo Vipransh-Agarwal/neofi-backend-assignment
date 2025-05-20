@@ -1,0 +1,19 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments (in case someone accidentally uses in-project venv)
+.venv/
+venv/
+
+# Environment variable files
+.env
+
+# IDE settings
+.vscode/
+.idea/
+
+# Caches
+.mypy_cache/
+.pytest_cache/
