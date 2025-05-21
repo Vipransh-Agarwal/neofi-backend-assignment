@@ -59,3 +59,16 @@ class EventUpdate(BaseModel):
 
 class EventBatchCreate(BaseModel):
     events: List[EventCreate]
+
+
+
+# ─── Permission schemas ─────────────────────────────────────────────────────────
+
+class PermissionRead(BaseModel):
+    id: int                   # user_id
+    username: str
+    can_edit: bool
+    granted_at: Optional[datetime]  # allow None
+
+    class Config:
+        orm_mode = True

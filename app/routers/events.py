@@ -5,9 +5,10 @@ from sqlalchemy.exc import IntegrityError
 from typing import List
 
 from ..schemas import EventCreate, EventRead, EventUpdate, EventBatchCreate
-from ..models import Event, User
+from ..models import Event, User, EventPermission
 from ..db.session import get_db
 from ..dependencies import get_current_user
+from ..utils.versioning import record_event_version
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -35,6 +36,9 @@ async def create_event(
     try:
         await db.commit()
         await db.refresh(new_event)
+        # ─── Record the initial version (version_number = 1) ─────────────────────
+        await record_event_version(db, new_event, current_user.id)
+        await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(
@@ -98,6 +102,18 @@ async def update_event(
     if not event or event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
+    # ─── Authorization: only owner or shared with can_edit=True ─────────────
+    if event.creator_id != current_user.id:
+        perm_result = await db.execute(
+            select(EventPermission).where(
+                EventPermission.event_id == event_id,
+                EventPermission.user_id == current_user.id,
+            )
+        )
+        perm = perm_result.scalar_one_or_none()
+        if not perm or not perm.can_edit:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
+    
     # Apply updates if provided
     if event_in.start_datetime is not None:
         event.start_datetime = event_in.start_datetime
@@ -116,8 +132,13 @@ async def update_event(
         )
 
     db.add(event)
+    await db.flush()
+    
+    # ─── Record a new version/diffs ────────────────────────────────────────
+    await record_event_version(db, event, current_user.id)
     await db.commit()
     await db.refresh(event)
+    
     return event
 
 
