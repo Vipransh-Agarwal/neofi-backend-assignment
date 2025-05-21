@@ -1,43 +1,111 @@
 from datetime import datetime, timedelta
 import os
+import uuid
+
 import bcrypt
-# from passlib.context import CryptContext
 from jose import JWTError, jwt
 
 # ─── Configurable settings ──────────────────────────────────────────────────
 
-# In a real app, move SECRET_KEY and ALGORITHM into environment variables or a config file
-SECRET_KEY = os.getenv("SECRET_KEY")
+SECRET_KEY = os.getenv("SECRET_KEY", "change_this_secret_key")
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 15  # adjust as needed
 
-# ─── Password hashing ────────────────────────────────────────────────────────
+ACCESS_TOKEN_EXPIRE_MINUTES = 15
+REFRESH_TOKEN_EXPIRE_DAYS = 7
+
+_revoked_jti: set[str] = set()
+
+
+# ─── Password hashing (bcrypt) ───────────────────────────────────────────────
 
 def get_password_hash(password: str) -> str:
     salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+    hashed = bcrypt.hashpw(password.encode("utf-8"), salt)
+    return hashed.decode("utf-8")
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
-# ─── JWT creation/verification ───────────────────────────────────────────────
+# ─── Internal: JWT creation helpers ───────────────────────────────────────────
 
-def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
+def _create_token(
+    data: dict,
+    expires_delta: timedelta,
+    token_type: str,
+) -> str:
     to_encode = data.copy()
-    # Ensure "sub" is a string
-    if "sub" in to_encode:
-        to_encode["sub"] = str(to_encode["sub"])
-    expire = datetime.now() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
+    now = datetime.utcnow()
+    expire = now + expires_delta
+
+    jti = str(uuid.uuid4())
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": now,
+            "jti": jti,
+            "type": token_type,
+        }
+    )
     token = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return token
 
-def decode_access_token(token: str) -> dict:
+
+def create_access_token(data: dict) -> str:
+    return _create_token(
+        data=data,
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
+        token_type="access",
+    )
+
+
+def create_refresh_token(data: dict) -> str:
+    return _create_token(
+        data=data,
+        expires_delta=timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS),
+        token_type="refresh",
+    )
+
+
+# ─── Token decoding & revocation ─────────────────────────────────────────────
+
+def decode_token(token: str, expected_type: str) -> dict:
     try:
-        # Returns the payload if valid, else raises
-        payload = jwt.decode(token=token, key=SECRET_KEY, algorithms=[ALGORITHM])
-        print(payload)
-        return payload
-    except JWTError:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError as e:
         raise
+
+    token_type = payload.get("type")
+    if token_type != expected_type:
+        raise JWTError(f"Token is not a valid {expected_type} token")
+
+    jti = payload.get("jti")
+    if not jti or jti in _revoked_jti:
+        raise JWTError("Token has been revoked or is invalid")
+
+    return payload
+
+
+def revoke_token(token: str) -> None:
+    try:
+        decoded = jwt.decode(
+            token,
+            SECRET_KEY,
+            algorithms=[ALGORITHM],
+            options={"verify_exp": False},
+        )
+        jti = decoded.get("jti")
+        if jti:
+            _revoked_jti.add(jti)
+    except Exception:
+        pass
+
+
+# ─── Convenience wrapper ─────────────────────────────────────────────────────
+
+def decode_access_token(token: str) -> dict:
+    """
+    Shorthand for decode_token(token, expected_type="access").
+    """
+    return decode_token(token, expected_type="access")

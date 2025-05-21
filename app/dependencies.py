@@ -1,5 +1,3 @@
-# app/dependencies.py
-
 import os
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
@@ -8,7 +6,7 @@ from sqlalchemy.future import select
 
 from .db.session import get_db
 from .models import User
-from .core.security import decode_access_token
+from .core.security import decode_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
@@ -23,7 +21,7 @@ async def get_current_user(
     )
 
     try:
-        payload = decode_access_token(token)
+        payload = decode_token(token, expected_type="access")
         sub_value = payload.get("sub")
         if sub_value is None:
             raise credentials_exception

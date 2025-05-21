@@ -160,3 +160,64 @@ async def revoke_permission(
     await db.delete(perm)
     await db.commit()
     return None  # 204 No Content
+
+
+@router.put(
+    "/{event_id}/permissions/{user_id}",
+    response_model=PermissionRead,
+)
+async def update_permission(
+    event_id: int,
+    user_id: int,
+    can_edit: bool,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """
+    Update an existing permission’s can_edit flag (only owner can do this).
+    Returns the updated PermissionRead.
+    """
+    # 1) Verify the event exists & current_user is owner
+    ev = await db.execute(select(Event).where(Event.id == event_id))
+    event = ev.scalar_one_or_none()
+    if not event or event.creator_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    # 2) Find the existing permission
+    perm_res = await db.execute(
+        select(EventPermission).where(
+            EventPermission.event_id == event_id,
+            EventPermission.user_id == user_id,
+        )
+    )
+    perm = perm_res.scalar_one_or_none()
+    if not perm:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Permission not found for this user",
+        )
+
+    # 3) Update fields
+    perm.can_edit = can_edit
+    perm.granted_by_id = current_user.id
+    perm.granted_at = datetime.utcnow()
+    db.add(perm)
+    await db.commit()
+    # No need to refresh perm for username—fetch it explicitly below
+
+    # 4) Fetch username directly, to avoid lazy‐loading
+    user_res = await db.execute(select(User.username).where(User.id == user_id))
+    username = user_res.scalar_one_or_none()
+    if username is None:
+        # In the unlikely case the user no longer exists
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found after updating permission",
+        )
+
+    return {
+        "id": user_id,
+        "username": username,
+        "can_edit": perm.can_edit,
+        "granted_at": perm.granted_at,
+    }
