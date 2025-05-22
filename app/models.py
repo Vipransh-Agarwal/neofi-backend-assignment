@@ -37,16 +37,21 @@ class Event(Base):
 
     creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     creator = relationship("User", back_populates="events")
-
-    # ─── New: optimistic‐locking version number ─────────────────────────────────
+    
     version_number = Column(Integer, nullable=False, server_default="1")
 
     # Optional: also update updated_at timestamp
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    
+    recurrence_rule = Column(Text(), nullable=True)
+    recurrence_end = Column(DateTime(timezone=True), nullable=True)
+
 
     # Relationship to permissions, versions, etc.
     permissions = relationship("EventPermission", back_populates="event", cascade="all, delete-orphan")
     versions = relationship("EventVersion", back_populates="event", cascade="all, delete-orphan")
+    
+    exceptions = relationship("EventException", back_populates="event", cascade="all, delete-orphan")
 
 
 class EventPermission(Base):
@@ -111,6 +116,17 @@ class EventChange(Base):
     changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     version = relationship("EventVersion", back_populates="changes")
+
+class EventException(Base):
+    __tablename__ = "event_exceptions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    exception_date = Column(DateTime(timezone=True), nullable=False)
+    # Optionally: a JSON column to override certain fields for that date (title, start/end)
+    override_data = Column(JSON(), nullable=True)
+
+    event = relationship("Event", back_populates="exceptions")
 
 
 # ─── Relationships in Event and EventVersion ───────────────────────────────

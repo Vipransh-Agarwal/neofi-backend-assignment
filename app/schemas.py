@@ -42,7 +42,9 @@ class EventBase(BaseModel):
     description: Optional[str]
     start_datetime: datetime
     end_datetime: datetime
-
+    recurrence_rule: Optional[str] = None
+    recurrence_end: Optional[datetime] = None
+    
     model_config = {"from_attributes": True}
 
 class EventCreate(EventBase):
@@ -63,7 +65,9 @@ class EventUpdate(BaseModel):
     description: Optional[str]
     start_datetime: Optional[datetime]
     end_datetime: Optional[datetime]
-    version_number: int  # NEW: required for optimistic locking
+    recurrence_rule: Optional[str] = None
+    recurrence_end: Optional[datetime] = None
+    version_number: int
     
     model_config = {"from_attributes": True}
 

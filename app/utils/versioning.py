@@ -32,8 +32,8 @@ async def record_event_version(db: AsyncSession, event: Event, user_id: int):
         else None,
         "end_datetime": event.end_datetime.isoformat() if event.end_datetime else None,
         "creator_id": event.creator_id,
-        "created_at": event.created_at.isoformat()
-        if event.created_at
+        "created_at": event.updated_at.isoformat()
+        if event.updated_at
         else datetime.utcnow().isoformat(),
     }
 
