@@ -1,12 +1,20 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 from ..dependencies import get_current_user_ws
 from ..utils.notifications import notification_manager
+from ..utils.sync_manager import sync_manager
+from ..db.session import get_db
 from typing import Dict
+import json
 
 router = APIRouter(prefix="/api/ws", tags=["websocket"])
 
 @router.websocket("/events/{user_id}")
-async def websocket_endpoint(websocket: WebSocket, user_id: int):
+async def websocket_endpoint(
+    websocket: WebSocket, 
+    user_id: int,
+    db: AsyncSession = Depends(get_db)
+):
     try:
         # Accept the connection
         await notification_manager.connect(websocket, user_id)

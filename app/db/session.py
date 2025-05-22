@@ -12,6 +12,10 @@ engine = create_async_engine(
     DATABASE_URL,
     echo=False,      # set to True if you want SQL logging
     future=True,
+    pool_size=20,    # Maximum number of connections in the pool
+    max_overflow=10, # Maximum number of connections that can be created beyond pool_size
+    pool_timeout=30, # Timeout for getting a connection from the pool
+    pool_pre_ping=True, # Enable connection health checks
 )
 
 # Create a session factory bound to the async engine

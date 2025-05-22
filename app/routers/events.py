@@ -97,6 +97,7 @@ async def create_event(
 
 @router.get("", response_model=List[EventRead])
 @limiter.limit("20/minute")
+@cache(expire=60)  # Cache for 1 minute
 async def list_events(
     request: Request,
     limit: int = Query(20, ge=1, le=100),
