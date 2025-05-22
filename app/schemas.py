@@ -97,6 +97,20 @@ class EventShare(BaseModel):
     
     model_config = {"from_attributes": True}
 
+class EventConflict(BaseModel):
+    id: int
+    title: str
+    start: datetime
+    end: datetime
+    
+    model_config = {"from_attributes": True}
+
+class ConflictResponse(BaseModel):
+    message: str
+    conflicts: List[EventConflict]
+
+    model_config = {"from_attributes": True}
+
 
 
 # ─── Permission schemas ─────────────────────────────────────────────────────────
