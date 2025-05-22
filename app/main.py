@@ -8,6 +8,7 @@ from fastapi_cache.backends.redis import RedisBackend
 
 from .routers import auth, events, permissions, versions
 from .middleware.msgpack import msgpack_or_json
+from .middleware.audit import AuditMiddleware
 
 redis_url = "redis://localhost:6379/0"
 
@@ -38,6 +39,9 @@ app.add_exception_handler(429, _rate_limit_exceeded_handler)
 
 # MessagePack middleware
 app.middleware("http")(msgpack_or_json)
+
+# Audit logging middleware
+app.add_middleware(AuditMiddleware)
 
 # Include routers
 app.include_router(auth.router)

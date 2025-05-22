@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     JSON,
 )
+from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -29,15 +30,23 @@ class Event(Base):
     __tablename__ = "events"
 
     id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False, index=True)
+    title = Column(String(256), nullable=False)
     description = Column(Text, nullable=True)
-    start_datetime = Column(DateTime, nullable=False, index=True)
-    end_datetime = Column(DateTime, nullable=False, index=True)
-    creator_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    start_datetime = Column(DateTime(timezone=True), nullable=False)
+    end_datetime = Column(DateTime(timezone=True), nullable=False)
 
-    # Relationship back to the user who created it
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     creator = relationship("User", back_populates="events")
+
+    # ─── New: optimistic‐locking version number ─────────────────────────────────
+    version_number = Column(Integer, nullable=False, server_default="1")
+
+    # Optional: also update updated_at timestamp
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+
+    # Relationship to permissions, versions, etc.
+    permissions = relationship("EventPermission", back_populates="event", cascade="all, delete-orphan")
+    versions = relationship("EventVersion", back_populates="event", cascade="all, delete-orphan")
 
 
 class EventPermission(Base):
@@ -118,3 +127,21 @@ Event.versions = relationship(
 EventVersion.changes = relationship(
     "EventChange", back_populates="version", cascade="all, delete-orphan"
 )
+
+
+# ─── AuditLog ───────────────────────────────
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    path = Column(String(512), nullable=False)       # e.g. "/api/events/3"
+    method = Column(String(10), nullable=False)       # "GET", "POST"
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    status_code = Column(Integer, nullable=False)
+    ip_address = Column(String(45), nullable=True)    # IPv4 or IPv6
+    request_body = Column(JSON, nullable=True)        # store JSON body (optional)
+    response_body = Column(JSON, nullable=True)       # store JSON response (optional)
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User")

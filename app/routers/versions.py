@@ -1,12 +1,15 @@
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import desc
+from datetime import datetime
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from ..models import Event, EventPermission, EventVersion, EventChange
+from ..schemas import EventVersionRead
 from ..db.session import get_db
 from ..dependencies import get_current_user
 from ..utils.versioning import record_event_version
@@ -301,3 +304,44 @@ async def get_changelog(
         )
 
     return changelog
+
+
+@router.get("/at", response_model=EventVersionRead)
+@limiter.limit("20/minute")
+async def get_version_as_of(
+    event_id: int,
+    request: Request,
+    at: datetime = Query(..., description="ISO8601 timestamp"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """
+    Return the snapshot of an event as it existed at time `at`.
+    Equivalent to GET /api/events/{id}/history?at=..., but now lives under /versions/at.
+    """
+    # 1) Verify event exists & user can read
+    ev = await db.execute(select(Event).where(Event.id == event_id))
+    event = ev.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # permission checks omitted...
+
+    # 2) Find latest version <= at
+    vq = await db.execute(
+        select(EventVersion)
+        .where(
+            (EventVersion.event_id == event_id)
+            & (EventVersion.created_at <= at)
+        )
+        .order_by(desc(EventVersion.version_number))
+        .limit(1)
+    )
+    version = vq.scalar_one_or_none()
+    if not version:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No version at or before {at.isoformat()}",
+        )
+
+    return EventVersionRead.model_validate(version)

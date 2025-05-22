@@ -1,6 +1,6 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
-from typing import Optional, List
+from typing import Optional, List, Any
 
 # ─── User schemas ──────────────────────────────────────────────────────────
 
@@ -36,33 +36,48 @@ class TokenPayload(BaseModel):
 
 # ─── Event schemas ─────────────────────────────────────────────────────────
 
-class EventCreate(BaseModel):
-    title: str
-    description: Optional[str] = None
-    start_datetime: datetime
-    end_datetime: datetime
 
-class EventRead(BaseModel):
-    id: int
+class EventBase(BaseModel):
     title: str
     description: Optional[str]
     start_datetime: datetime
     end_datetime: datetime
-    creator_id: int
-    created_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = {"from_attributes": True}
+
+class EventCreate(EventBase):
+    pass
+
+class EventRead(EventBase):
+    id: int
+    creator_id: int
+    version_number: int
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class EventUpdate(BaseModel):
-    title:    Optional[str] = None
-    description: Optional[str] = None
-    start_datetime: Optional[datetime] = None
-    end_datetime:   Optional[datetime] = None
+    # When updating, client must supply the version_number they last saw
+    title: Optional[str]
+    description: Optional[str]
+    start_datetime: Optional[datetime]
+    end_datetime: Optional[datetime]
+    version_number: int  # NEW: required for optimistic locking
+    
+    model_config = {"from_attributes": True}
 
 class EventBatchCreate(BaseModel):
     events: List[EventCreate]
+
+
+class EventVersionRead(BaseModel):
+    version_number: int
+    snapshot: Any
+    created_by_id: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 
