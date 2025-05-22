@@ -224,11 +224,12 @@ async def rollback_event(
     event.start_datetime = parser.isoparse(snapshot.get("start_datetime"))
     event.end_datetime = parser.isoparse(snapshot.get("end_datetime"))
     # We do not overwrite creator_id or created_at; we want to preserve original creation ownership.
-    event.created_at = parser.isoparse(snapshot.get("created_at"))
+    
     db.add(event)
     await db.flush()
 
     # 5) Record a brand‐new version (this will get version_number = old + 1)
+    await db.refresh(event)
     new_ver = await record_event_version(db, event, current_user.id)
     await db.commit()
 

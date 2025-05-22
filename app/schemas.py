@@ -61,13 +61,13 @@ class EventRead(EventBase):
 
 class EventUpdate(BaseModel):
     # When updating, client must supply the version_number they last saw
-    title: Optional[str]
-    description: Optional[str]
-    start_datetime: Optional[datetime]
-    end_datetime: Optional[datetime]
+    title: Optional[str] = None
+    description: Optional[str] = None
+    start_datetime: Optional[datetime] = None
+    end_datetime: Optional[datetime] = None
     recurrence_rule: Optional[str] = None
     recurrence_end: Optional[datetime] = None
-    version_number: int
+    # version_number: int
     
     model_config = {"from_attributes": True}
 
@@ -81,6 +81,12 @@ class EventVersionRead(BaseModel):
     created_by_id: int
     created_at: datetime
 
+    model_config = {"from_attributes": True}
+
+class EventShare(BaseModel):
+    user_id: int
+    can_edit: bool
+    
     model_config = {"from_attributes": True}
 
 

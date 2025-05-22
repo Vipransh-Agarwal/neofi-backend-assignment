@@ -8,12 +8,15 @@ from sqlalchemy import (
     Text,
     Boolean,
     JSON,
+    Index,
+    UniqueConstraint,
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
+
 
 class User(Base):
     __tablename__ = "users"
@@ -23,7 +26,24 @@ class User(Base):
     email = Column(String(120), unique=True, nullable=False, index=True)
     password_hash = Column(String(128), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    # relationship to events the user created
     events = relationship("Event", back_populates="creator")
+
+    # relationship for permissions, versions, etc. (if needed)
+    permissions_given = relationship(
+        "EventPermission",
+        foreign_keys="EventPermission.granted_by_id",
+        back_populates="granted_by",
+        cascade="all, delete-orphan",
+    )
+    versions_created = relationship(
+        "EventVersion",
+        foreign_keys="EventVersion.created_by_id",
+        back_populates="created_by",
+        cascade="all, delete-orphan",
+    )
+    audit_logs = relationship("AuditLog", back_populates="user", cascade="all, delete-orphan")
 
 
 class Event(Base):
@@ -35,23 +55,46 @@ class Event(Base):
     start_datetime = Column(DateTime(timezone=True), nullable=False)
     end_datetime = Column(DateTime(timezone=True), nullable=False)
 
-    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    creator_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     creator = relationship("User", back_populates="events")
-    
+
     version_number = Column(Integer, nullable=False, server_default="1")
 
-    # Optional: also update updated_at timestamp
-    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
-    
+    # Automatically set/refresh updated_at
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+        onupdate=func.now(),
+    )
+
     recurrence_rule = Column(Text(), nullable=True)
     recurrence_end = Column(DateTime(timezone=True), nullable=True)
 
+    # relationships
+    permissions = relationship(
+        "EventPermission", back_populates="event", cascade="all, delete-orphan"
+    )
+    versions = relationship(
+        "EventVersion", back_populates="event", cascade="all, delete-orphan"
+    )
+    exceptions = relationship(
+        "EventException", back_populates="event", cascade="all, delete-orphan"
+    )
 
-    # Relationship to permissions, versions, etc.
-    permissions = relationship("EventPermission", back_populates="event", cascade="all, delete-orphan")
-    versions = relationship("EventVersion", back_populates="event", cascade="all, delete-orphan")
-    
-    exceptions = relationship("EventException", back_populates="event", cascade="all, delete-orphan")
+    __table_args__ = (
+        # index on creator_id → speeds up “events created by user X”
+        Index("ix_events_creator_id", "creator_id"),
+
+        # index on start_datetime → for filtering/sorting by date
+        Index("ix_events_start_datetime", "start_datetime"),
+
+        # composite index on (start_datetime, end_datetime) if you query both together
+        Index("ix_events_start_end", "start_datetime", "end_datetime"),
+
+        # index on recurrence_end → for querying events that stop recurring by a certain date
+        Index("ix_events_recurrence_end", "recurrence_end"),
+    )
 
 
 class EventPermission(Base):
@@ -73,10 +116,21 @@ class EventPermission(Base):
     )
     granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    # Relationships (optional, for convenience)
+    # relationships
     event = relationship("Event", back_populates="permissions")
     user = relationship("User", foreign_keys=[user_id])
-    granted_by = relationship("User", foreign_keys=[granted_by_id])
+    granted_by = relationship("User", foreign_keys=[granted_by_id], back_populates="permissions_given")
+
+    __table_args__ = (
+        # unique constraint: no duplicate (event_id, user_id)
+        UniqueConstraint("event_id", "user_id", name="ux_event_permissions_event_user"),
+
+        # index on event_id → speeds up “who has permissions on this event?”
+        Index("ix_event_permissions_event_id", "event_id"),
+
+        # index on user_id → speeds up “list all events user X can access”
+        Index("ix_event_permissions_user_id", "user_id"),
+    )
 
 
 class EventVersion(Base):
@@ -90,14 +144,24 @@ class EventVersion(Base):
         index=True,
     )
     version_number = Column(Integer, nullable=False)
-    snapshot = Column(JSON, nullable=False)  # store full event payload as JSON
+    snapshot = Column(JSON, nullable=False)  # store the full event payload as JSON
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by_id = Column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=False
     )
 
+    # relationships
     event = relationship("Event", back_populates="versions")
-    created_by = relationship("User", foreign_keys=[created_by_id])
+    created_by = relationship("User", back_populates="versions_created", foreign_keys=[created_by_id])
+    changes = relationship("EventChange", back_populates="version", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        # unique on (event_id, version_number)
+        UniqueConstraint("event_id", "version_number", name="ux_event_versions_event_version"),
+
+        # index on event_id → for listing all versions of a single event
+        Index("ix_event_versions_event_id", "event_id"),
+    )
 
 
 class EventChange(Base):
@@ -111,41 +175,41 @@ class EventChange(Base):
         index=True,
     )
     field_name = Column(String, nullable=False)
-    old_value = Column(Text, nullable=True)  # JSON‐serialized text of the old value
-    new_value = Column(Text, nullable=True)  # JSON‐serialized text of the new value
+    old_value = Column(Text, nullable=True)
+    new_value = Column(Text, nullable=True)
     changed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     version = relationship("EventVersion", back_populates="changes")
+
+    __table_args__ = (
+        # index on event_version_id → for fetching all changes in a given version
+        Index("ix_event_changes_event_version_id", "event_version_id"),
+    )
+
 
 class EventException(Base):
     __tablename__ = "event_exceptions"
 
     id = Column(Integer, primary_key=True, index=True)
-    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    event_id = Column(
+        Integer,
+        ForeignKey("events.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     exception_date = Column(DateTime(timezone=True), nullable=False)
-    # Optionally: a JSON column to override certain fields for that date (title, start/end)
     override_data = Column(JSON(), nullable=True)
 
     event = relationship("Event", back_populates="exceptions")
 
+    __table_args__ = (
+        # index on event_id → for quickly retrieving exceptions for a given event
+        Index("ix_event_exceptions_event_id", "event_id"),
 
-# ─── Relationships in Event and EventVersion ───────────────────────────────
+        # index on exception_date → for date‐based queries on exceptions
+        Index("ix_event_exceptions_exception_date", "exception_date"),
+    )
 
-# In Event (add this above or below your existing class):
-Event.permissions = relationship(
-    "EventPermission", back_populates="event", cascade="all, delete-orphan"
-)
-Event.versions = relationship(
-    "EventVersion", back_populates="event", cascade="all, delete-orphan"
-)
-
-# In EventVersion (add this below the class):
-EventVersion.changes = relationship(
-    "EventChange", back_populates="version", cascade="all, delete-orphan"
-)
-
-
-# ─── AuditLog ───────────────────────────────
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -156,8 +220,16 @@ class AuditLog(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     status_code = Column(Integer, nullable=False)
     ip_address = Column(String(45), nullable=True)    # IPv4 or IPv6
-    request_body = Column(JSON, nullable=True)        # store JSON body (optional)
-    response_body = Column(JSON, nullable=True)       # store JSON response (optional)
+    request_body = Column(JSON, nullable=True)
+    response_body = Column(JSON, nullable=True)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    user = relationship("User")
+    user = relationship("User", back_populates="audit_logs")
+
+    __table_args__ = (
+        # index on user_id → for listing all logs by a particular user
+        Index("ix_audit_logs_user_id", "user_id"),
+
+        # index on timestamp → for date‐range filtering of audit entries
+        Index("ix_audit_logs_timestamp", "timestamp"),
+    )

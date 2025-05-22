@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, or_
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from dateutil.rrule import rrulestr
 from dateutil.parser import isoparse
 
@@ -59,170 +59,61 @@ async def create_event(
 @limiter.limit("20/minute")
 async def list_events(
     request: Request,
-    skip: int = 0,
-    limit: int = 20,
-    start_from: Optional[datetime] = Query(
-        None, description="Include occurrences with start_datetime >= this"
-    ),
-    start_to: Optional[datetime] = Query(
-        None, description="Include occurrences with start_datetime <= this"
-    ),
-    changed_since: Optional[datetime] = Query(
-        None, description="Return only events changed since this timestamp"
-    ),
+    limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    start_date: datetime | None = Query(None, description="ISO datetime, e.g. 2025-06-01T00:00:00Z"),
+    end_date:   datetime | None = Query(None, description="ISO datetime, e.g. 2025-06-30T23:59:59Z"),
     db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    List events (including expanded recurring occurrences) that the user can access.
-    - If `changed_since` is provided, do the “sync” logic, ignoring recurrence expansion.
-    - Otherwise, return both one-off events and expanded recurring instances within [start_from, start_to].
-    """
+    # 1) Normalize naive → UTC if needed
+    if start_date is not None and start_date.tzinfo is None:
+        start_date = start_date.replace(tzinfo=timezone.utc)
+    if end_date is not None and end_date.tzinfo is None:
+        end_date = end_date.replace(tzinfo=timezone.utc)
 
-    # ─── Sync path (as before) ─────────────────────────────────────────────────────
-    if changed_since:
-        subq = (
-            select(EventVersion.event_id)
-            .where(EventVersion.created_at > changed_since)
-            .group_by(EventVersion.event_id)
-        ).subquery()
-
-        q = (
-            select(Event)
-            .where(
-                (Event.id.in_(select(subq.c.event_id)))
-                & (
-                    (Event.creator_id == current_user.id)
-                    | (
-                        Event.id.in_(
-                            select(EventPermission.event_id).where(
-                                EventPermission.user_id == current_user.id
-                            )
-                        )
-                    )
-                )
-            )
-            .order_by(Event.updated_at.desc())
-            .offset(skip)
-            .limit(limit)
+    # 2) Pull all events that user owns or is shared on
+    stmt = (
+        select(Event)
+        .where(
+            (Event.creator_id == current_user.id)
+            | Event.permissions.any(user_id=current_user.id)
         )
-
-        result = await db.execute(q)
-        events = result.scalars().all()
-        return [EventRead.model_validate(ev) for ev in events]
-
-    # ─── Normal listing with recurrence expansion ─────────────────────────────────
-    if start_from is None or start_to is None:
-        raise HTTPException(
-            status_code=400,
-            detail="Both start_from and start_to must be provided when listing events",
-        )
-
-    # 1) Fetch all one-off events (recurrence_rule IS NULL) in the given window
-    base_q = select(Event).where(
-        and_(
-            Event.recurrence_rule.is_(None),
-            Event.start_datetime >= start_from,
-            Event.start_datetime <= start_to,
-            or_(
-                Event.creator_id == current_user.id,
-                Event.id.in_(
-                    select(EventPermission.event_id).where(
-                        EventPermission.user_id == current_user.id
-                    )
-                ),
-            ),
-        )
+        .limit(limit)
+        .offset(offset)
     )
+    result = await db.execute(stmt)
+    all_events = result.scalars().all()
 
-    # 2) Fetch all “recurring master events” that *could* have occurrences in [start_from, start_to].
-    #    i.e. events where recurrence_rule IS NOT NULL, AND:
-    #      - `start_datetime` <= start_to (the original start <= window end)
-    #      - AND (recurrence_end IS NULL OR recurrence_end >= start_from).
-    rec_q = select(Event).where(
-        and_(
-            Event.recurrence_rule.is_not(None),
-            Event.start_datetime <= start_to,
-            or_(
-                Event.recurrence_end.is_(None),
-                Event.recurrence_end >= start_from,
-            ),
-            or_(
-                Event.creator_id == current_user.id,
-                Event.id.in_(
-                    select(EventPermission.event_id).where(
-                        EventPermission.user_id == current_user.id
-                    )
-                ),
-            ),
-        )
-    )
-
-    one_off_result = await db.execute(base_q)
-    one_off_events = one_off_result.scalars().all()
-
-    recurring_result = await db.execute(rec_q)
-    recurring_events = recurring_result.scalars().all()
-
-    # 3) For each recurring master event, build its occurrences within [start_from, start_to].
-    expanded_occurrences = []
-    for ev in recurring_events:
+    filtered: list[Event] = []
+    for ev in all_events:
+        # If no recurrence, just do a simple overlap check:
         if not ev.recurrence_rule:
-            continue  # sanity check
-
-        # Parse the RRULE string in the context of the event’s DTSTART
-        # Example: ev.recurrence_rule = "FREQ=WEEKLY;BYDAY=MO,WE,FR;INTERVAL=1"
-        # The dateutil.rrulestr(...) can parse that, but we need to supply dtstart.
-        try:
+            if start_date and ev.start_datetime < start_date:
+                continue
+            if end_date and ev.end_datetime > end_date:
+                continue
+            filtered.append(ev)
+        else:
+            # Build an rrule from the stored rule string (dtstart=original start_datetime)
             rule = rrulestr(ev.recurrence_rule, dtstart=ev.start_datetime)
-        except Exception as e:
-            # If an invalid RRULE was stored, skip expansion
-            continue
 
-        # Determine the window to generate occurrences
-        # We’ll ask for all occurrences between start_from and start_to (inclusive).
-        # But rrulestr by default yields all future occurrences (to a max). To bound it:
-        between = rule.between(
-            start_from,
-            start_to,
-            inc=True,  # inclusive
-        )
+            # Decide the window to check:
+            window_start = start_date or ev.start_datetime
+            window_end = end_date or ev.recurrence_end or ev.end_datetime
 
-        for occ_start in between:
-            # Compute the corresponding end time: assume the duration is (ev.end - ev.start)
-            duration = ev.end_datetime - ev.start_datetime
-            occ_end = occ_start + duration
+            # If the original ev.start_datetime was tz‐aware, ensure our window_start/‐end are aware
+            if window_start.tzinfo is None:
+                window_start = window_start.replace(tzinfo=timezone.utc)
+            if window_end.tzinfo is None:
+                window_end = window_end.replace(tzinfo=timezone.utc)
 
-            # Build a “virtual” EventRead object that represents this occurrence.
-            # We need a unique ID? Often we just leave id = master id, and client treats it as occurrence.
-            occurrence = EventRead(
-                id=ev.id,
-                creator_id=ev.creator_id,
-                title=ev.title,
-                description=ev.description,
-                start_datetime=occ_start,
-                end_datetime=occ_end,
-                recurrence_rule=ev.recurrence_rule,
-                recurrence_end=ev.recurrence_end,
-                version_number=ev.version_number,
-                updated_at=ev.updated_at,
-            )
-            expanded_occurrences.append(occurrence)
+            occs = rule.between(window_start, window_end, inc=True)
+            if occs:
+                filtered.append(ev)
 
-    # 4) Combine one-offs and expanded occurrences → sort by start_datetime
-    combined = one_off_events[:]  # ORM objects
-    combined += expanded_occurrences  # Pydantic‐validated models
-
-    # Convert all ORM events to Pydantic first, then combine with occurrence instances
-    one_off_read = [EventRead.model_validate(o) for o in one_off_events]
-    all_events = one_off_read + expanded_occurrences
-
-    # Sort by start_datetime
-    all_events.sort(key=lambda e: e.start_datetime)
-
-    # Apply skip/limit on the combined list (in‐memory)
-    sliced = all_events[skip : skip + limit]
-    return sliced
+    # 3) Return via Pydantic schema
+    return [EventRead.model_validate(ev) for ev in filtered]
 
 
 @router.get("/{event_id}", response_model=EventRead)
@@ -250,54 +141,39 @@ async def get_event(
 @router.put("/{event_id}", response_model=EventRead)
 @limiter.limit("20/minute")
 async def update_event(
-    event_id: int,
-    event_in: EventUpdate,
     request: Request,
+    event_id: int,
+    event_update: EventUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """
-    Update an event or its recurrence fields. Clients must supply version_number.
-    """
-    # 1) Fetch and permissions (omitted for brevity)
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
-    if not event:
+
+    if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    # permission check omitted...
-
-    # 2) Optimistic locking
-    if event.version_number != event_in.version_number:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Event version {event.version_number} has changed; you sent {event_in.version_number}.",
+    if event.creator_id != current_user.id:
+        # Optional: also allow if user has can_edit permission
+        perm_result = await db.execute(
+            select(EventPermission).where(
+                EventPermission.event_id == event_id,
+                EventPermission.user_id == current_user.id,
+                EventPermission.can_edit == True,
+            )
         )
+        permission = perm_result.scalar_one_or_none()
+        if not permission:
+            raise HTTPException(status_code=403, detail="You don't have permission to edit this event.")
 
-    # 3) Apply updates to all fields, including recurrence_rule/recurrence_end
-    if event_in.title is not None:
-        event.title = event_in.title
-    if event_in.description is not None:
-        event.description = event_in.description
-    if event_in.start_datetime is not None:
-        event.start_datetime = event_in.start_datetime
-    if event_in.end_datetime is not None:
-        event.end_datetime = event_in.end_datetime
+    for attr, value in event_update.dict(exclude_unset=True).items():
+        setattr(event, attr, value)
 
-    # New: recurrence updates
-    event.recurrence_rule = event_in.recurrence_rule
-    event.recurrence_end = event_in.recurrence_end
-
-    # 4) Bump version_number
-    event.version_number += 1
-    db.add(event)
+    await db.flush()  # Update timestamp
+    await record_event_version(db, event, current_user.id)
     await db.commit()
     await db.refresh(event)
-
-    # 5) Record a new version snapshot
-    await record_event_version(db, event, current_user)
-
-    return EventRead.model_validate(event)
+    return event
 
 
 @router.delete("/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
