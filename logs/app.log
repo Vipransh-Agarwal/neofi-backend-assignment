@@ -1,2 +1,13 @@
 {"timestamp": "2025-05-23T04:12:08.486033", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Starting application..."}
 {"timestamp": "2025-05-23T04:12:08.499300", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Successfully connected to Redis"}
+{"timestamp": "2025-05-23T04:19:41.521384", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Shutting down application..."}
+{"timestamp": "2025-05-23T04:19:42.949075", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Starting application..."}
+{"timestamp": "2025-05-23T04:19:42.959168", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Successfully connected to Redis"}
+{"timestamp": "2025-05-23T04:19:50.256464", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Shutting down application..."}
+{"timestamp": "2025-05-23T04:19:51.779035", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Starting application..."}
+{"timestamp": "2025-05-23T04:19:51.790623", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Successfully connected to Redis"}
+{"timestamp": "2025-05-23T04:19:53.609479", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Starting application..."}
+{"timestamp": "2025-05-23T04:19:53.636813", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Successfully connected to Redis"}
+{"timestamp": "2025-05-23T04:19:55.651194", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Starting application..."}
+{"timestamp": "2025-05-23T04:19:55.664190", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Successfully connected to Redis"}
+{"timestamp": "2025-05-23T04:20:08.061661", "level": "INFO", "name": "app.main", "module": "main", "funcName": "lifespan", "message": "Shutting down application..."}
