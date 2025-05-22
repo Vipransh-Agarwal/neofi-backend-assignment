@@ -26,6 +26,7 @@ from ..db.session import get_db
 from ..dependencies import get_current_user, require_editor_or_above, require_owner
 from ..utils.versioning import record_event_version
 from ..utils.conflicts import detect_event_conflicts  # Add this import at the top
+from ..utils.notifications import notification_manager
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -84,6 +85,13 @@ async def create_event(
     # Record the first version (snapshot) as usual
     await record_event_version(db, new_event, current_user.id)
 
+    # After successful event creation
+    await notification_manager.notify_event_change(
+        event=new_event,
+        change_type="created",
+        changed_by=current_user
+    )
+    
     return EventRead.model_validate(new_event)
 
 
@@ -242,6 +250,14 @@ async def update_event(
     
     # Get fresh event data
     await db.refresh(event)
+
+    # After successful event update
+    await notification_manager.notify_event_change(
+        event=event,
+        change_type="updated",
+        changed_by=current_user
+    )
+    
     return event
 
 
@@ -260,6 +276,13 @@ async def delete_event(
     event = result.scalar_one_or_none()
     if not event or event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
+
+    # Before deletion, notify subscribers
+    await notification_manager.notify_event_change(
+        event=event,
+        change_type="deleted",
+        changed_by=current_user
+    )
 
     await db.delete(event)
     await db.commit()
