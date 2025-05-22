@@ -1,5 +1,5 @@
-from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
@@ -15,6 +15,9 @@ from ..core.security import (
     revoke_token,
 )
 from ..dependencies import get_current_user
+
+# We only need OAuth2PasswordBearer for the logout endpoint:
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -56,7 +59,7 @@ async def login_for_tokens(user_in: UserCreate, db: AsyncSession = Depends(get_d
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    data = {"sub": str(user.id)}  # subject is user ID (string)
+    data = {"sub": str(user.id)}
     access_token = create_access_token(data=data)
     refresh_token = create_refresh_token(data=data)
     return {
@@ -68,7 +71,7 @@ async def login_for_tokens(user_in: UserCreate, db: AsyncSession = Depends(get_d
 
 @router.post("/refresh", response_model=Token)
 async def refresh_access_token(
-    refresh_token: RefreshToken,  # we’ll accept a JSON body: {"refresh_token": "..."}
+    refresh_token: RefreshToken,  # Expect JSON body: { "refresh_token": "..." }
 ):
     """
     Exchange a valid refresh token for a new access token and a new refresh token.
@@ -84,8 +87,8 @@ async def refresh_access_token(
             detail="Refresh token invalid or expired",
         )
 
-    # Revoke the old refresh token so it can’t be reused
-    revoke_token(refresh_token)
+    # Revoke the old refresh token so it can’t be used again
+    revoke_token(refresh_token.refresh_token)
 
     data = {"sub": str(user_id)}
     new_access = create_access_token(data=data)
@@ -94,13 +97,22 @@ async def refresh_access_token(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
-async def logout_current_token(token: str = Depends(get_current_user)):
+async def logout_current_token(
+    access_token: str = Depends(oauth2_scheme),
+    # Optionally accept a JSON body with { "refresh_token": "..." } to revoke that too
+    refresh_token: RefreshToken | None = None,
+):
     """
-    Invalidate the current access token. We also revoke any refresh tokens with the same JTI if provided.
+    Invalidate the current access token. Optionally revoke a provided refresh token.
     """
-    # The `Depends(get_current_user)` will already have decoded and validated an access token.
-    # FastAPI injects the 'token' argument as the raw token string in this case. We just revoke it:
-    revoke_token(token)
+    # Revoke the access token (we know it’s a valid access token because get_current_user was already used
+    # if you want to double-check, you could call decode_token(access_token, "access") again)
+    revoke_token(access_token)
+
+    # If a refresh_token was provided, revoke it as well
+    if refresh_token and refresh_token.refresh_token:
+        revoke_token(refresh_token.refresh_token)
+
     return None
 
 
