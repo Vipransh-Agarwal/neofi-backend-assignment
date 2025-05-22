@@ -14,6 +14,7 @@ class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+    role: Optional[RoleType] = RoleType.VIEWER  # Add this line
 
 class UserRead(BaseModel):
     id: int

@@ -145,8 +145,9 @@ async def update_event(
     event_id: int,
     event_update: EventUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_editor_or_above),  # Only EDITOR and OWNER can update
+    current_user: User = Depends(require_editor_or_above),
 ):
+    """Update an event with proper async handling"""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
 
@@ -154,7 +155,7 @@ async def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     if event.creator_id != current_user.id:
-        # Optional: also allow if user has can_edit permission
+        # Check for edit permission
         perm_result = await db.execute(
             select(EventPermission).where(
                 EventPermission.event_id == event_id,
@@ -166,12 +167,19 @@ async def update_event(
         if not permission:
             raise HTTPException(status_code=403, detail="You don't have permission to edit this event.")
 
-    for attr, value in event_update.dict(exclude_unset=True).items():
-        setattr(event, attr, value)
+    # Update fields
+    update_data = event_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(event, field, value)
 
-    await db.flush()  # Update timestamp
+    # Create version before commit
+    await db.flush()
     await record_event_version(db, event, current_user.id)
+    
+    # Commit all changes
     await db.commit()
+    
+    # Get fresh event data
     await db.refresh(event)
     return event
 
