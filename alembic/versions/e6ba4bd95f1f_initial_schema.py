@@ -1,8 +1,8 @@
-"""initial schema
+"""Initial schema
 
-Revision ID: f5f647bef18f
+Revision ID: e6ba4bd95f1f
 Revises: 
-Create Date: 2025-05-22 18:36:28.505388
+Create Date: 2025-05-23 02:36:13.580151
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = 'f5f647bef18f'
+revision: str = 'e6ba4bd95f1f'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -27,6 +27,7 @@ def upgrade() -> None:
     sa.Column('email', sa.String(length=120), nullable=False),
     sa.Column('password_hash', sa.String(length=128), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
+    sa.Column('role', sa.Enum('OWNER', 'EDITOR', 'VIEWER', name='roletype'), nullable=False),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_users_email'), 'users', ['email'], unique=True)
@@ -46,6 +47,8 @@ def upgrade() -> None:
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_audit_logs_id'), 'audit_logs', ['id'], unique=False)
+    op.create_index('ix_audit_logs_timestamp', 'audit_logs', ['timestamp'], unique=False)
+    op.create_index('ix_audit_logs_user_id', 'audit_logs', ['user_id'], unique=False)
     op.create_table('events',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('title', sa.String(length=256), nullable=False),
@@ -60,15 +63,21 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['creator_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_events_creator_id'), 'events', ['creator_id'], unique=False)
     op.create_index(op.f('ix_events_id'), 'events', ['id'], unique=False)
+    op.create_index('ix_events_recurrence_end', 'events', ['recurrence_end'], unique=False)
+    op.create_index('ix_events_start_datetime', 'events', ['start_datetime'], unique=False)
+    op.create_index('ix_events_start_end', 'events', ['start_datetime', 'end_datetime'], unique=False)
     op.create_table('event_exceptions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('event_id', sa.Integer(), nullable=False),
     sa.Column('exception_date', sa.DateTime(timezone=True), nullable=False),
     sa.Column('override_data', sa.JSON(), nullable=True),
-    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ),
+    sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_index(op.f('ix_event_exceptions_event_id'), 'event_exceptions', ['event_id'], unique=False)
+    op.create_index('ix_event_exceptions_exception_date', 'event_exceptions', ['exception_date'], unique=False)
     op.create_index(op.f('ix_event_exceptions_id'), 'event_exceptions', ['id'], unique=False)
     op.create_table('event_permissions',
     sa.Column('id', sa.Integer(), nullable=False),
@@ -80,11 +89,12 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='CASCADE'),
     sa.ForeignKeyConstraint(['granted_by_id'], ['users.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('event_id', 'user_id', name='ux_event_permissions_event_user')
     )
-    op.create_index(op.f('ix_event_permissions_event_id'), 'event_permissions', ['event_id'], unique=False)
+    op.create_index('ix_event_permissions_event_id', 'event_permissions', ['event_id'], unique=False)
     op.create_index(op.f('ix_event_permissions_id'), 'event_permissions', ['id'], unique=False)
-    op.create_index(op.f('ix_event_permissions_user_id'), 'event_permissions', ['user_id'], unique=False)
+    op.create_index('ix_event_permissions_user_id', 'event_permissions', ['user_id'], unique=False)
     op.create_table('event_versions',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('event_id', sa.Integer(), nullable=False),
@@ -94,7 +104,8 @@ def upgrade() -> None:
     sa.Column('created_by_id', sa.Integer(), nullable=False),
     sa.ForeignKeyConstraint(['created_by_id'], ['users.id'], ondelete='SET NULL'),
     sa.ForeignKeyConstraint(['event_id'], ['events.id'], ondelete='CASCADE'),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('event_id', 'version_number', name='ux_event_versions_event_version')
     )
     op.create_index(op.f('ix_event_versions_event_id'), 'event_versions', ['event_id'], unique=False)
     op.create_index(op.f('ix_event_versions_id'), 'event_versions', ['id'], unique=False)
@@ -122,14 +133,22 @@ def downgrade() -> None:
     op.drop_index(op.f('ix_event_versions_id'), table_name='event_versions')
     op.drop_index(op.f('ix_event_versions_event_id'), table_name='event_versions')
     op.drop_table('event_versions')
-    op.drop_index(op.f('ix_event_permissions_user_id'), table_name='event_permissions')
+    op.drop_index('ix_event_permissions_user_id', table_name='event_permissions')
     op.drop_index(op.f('ix_event_permissions_id'), table_name='event_permissions')
-    op.drop_index(op.f('ix_event_permissions_event_id'), table_name='event_permissions')
+    op.drop_index('ix_event_permissions_event_id', table_name='event_permissions')
     op.drop_table('event_permissions')
     op.drop_index(op.f('ix_event_exceptions_id'), table_name='event_exceptions')
+    op.drop_index('ix_event_exceptions_exception_date', table_name='event_exceptions')
+    op.drop_index(op.f('ix_event_exceptions_event_id'), table_name='event_exceptions')
     op.drop_table('event_exceptions')
+    op.drop_index('ix_events_start_end', table_name='events')
+    op.drop_index('ix_events_start_datetime', table_name='events')
+    op.drop_index('ix_events_recurrence_end', table_name='events')
     op.drop_index(op.f('ix_events_id'), table_name='events')
+    op.drop_index(op.f('ix_events_creator_id'), table_name='events')
     op.drop_table('events')
+    op.drop_index('ix_audit_logs_user_id', table_name='audit_logs')
+    op.drop_index('ix_audit_logs_timestamp', table_name='audit_logs')
     op.drop_index(op.f('ix_audit_logs_id'), table_name='audit_logs')
     op.drop_table('audit_logs')
     op.drop_index(op.f('ix_users_username'), table_name='users')
