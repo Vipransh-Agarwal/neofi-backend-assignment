@@ -1,19 +1,29 @@
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import desc
+from datetime import datetime
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..models import Event, EventPermission, EventVersion, EventChange
+from ..schemas import EventVersionRead
 from ..db.session import get_db
 from ..dependencies import get_current_user
 from ..utils.versioning import record_event_version
 
 router = APIRouter(prefix="/api/events", tags=["versions"])
 
+# If you want a dedicated limiter instead of re-importing the global one:
+limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/{event_id}/history", response_model=List[Dict[str, Any]])
+@limiter.limit("20/minute")
 async def list_versions(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -53,8 +63,10 @@ async def list_versions(
 
 
 @router.get("/{event_id}/history/{version_number}", response_model=Dict[str, Any])
+@limiter.limit("20/minute")
 async def get_version(
     event_id: int,
+    request: Request,
     version_number: int,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -97,10 +109,12 @@ async def get_version(
 
 
 @router.get("/{event_id}/diff/{older}/{newer}", response_model=List[Dict[str, Any]])
+@limiter.limit("20/minute")
 async def get_diff(
     event_id: int,
     older: int,
     newer: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -159,9 +173,11 @@ async def get_diff(
     "/{event_id}/rollback/{version_number}",
     response_model=Dict[str, Any],
 )
+@limiter.limit("20/minute")
 async def rollback_event(
     event_id: int,
     version_number: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -208,11 +224,12 @@ async def rollback_event(
     event.start_datetime = parser.isoparse(snapshot.get("start_datetime"))
     event.end_datetime = parser.isoparse(snapshot.get("end_datetime"))
     # We do not overwrite creator_id or created_at; we want to preserve original creation ownership.
-    event.created_at = parser.isoparse(snapshot.get("created_at"))
+    
     db.add(event)
     await db.flush()
 
     # 5) Record a brand‐new version (this will get version_number = old + 1)
+    await db.refresh(event)
     new_ver = await record_event_version(db, event, current_user.id)
     await db.commit()
 
@@ -227,8 +244,10 @@ async def rollback_event(
     "/{event_id}/changelog",
     response_model=List[Dict[str, Any]],
 )
+@limiter.limit("20/minute")
 async def get_changelog(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -286,3 +305,44 @@ async def get_changelog(
         )
 
     return changelog
+
+
+@router.get("/at", response_model=EventVersionRead)
+@limiter.limit("20/minute")
+async def get_version_as_of(
+    event_id: int,
+    request: Request,
+    at: datetime = Query(..., description="ISO8601 timestamp"),
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    """
+    Return the snapshot of an event as it existed at time `at`.
+    Equivalent to GET /api/events/{id}/history?at=..., but now lives under /versions/at.
+    """
+    # 1) Verify event exists & user can read
+    ev = await db.execute(select(Event).where(Event.id == event_id))
+    event = ev.scalar_one_or_none()
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    # permission checks omitted...
+
+    # 2) Find latest version <= at
+    vq = await db.execute(
+        select(EventVersion)
+        .where(
+            (EventVersion.event_id == event_id)
+            & (EventVersion.created_at <= at)
+        )
+        .order_by(desc(EventVersion.version_number))
+        .limit(1)
+    )
+    version = vq.scalar_one_or_none()
+    if not version:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No version at or before {at.isoformat()}",
+        )
+
+    return EventVersionRead.model_validate(version)

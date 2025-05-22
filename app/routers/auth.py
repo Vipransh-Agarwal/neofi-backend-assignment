@@ -1,7 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..schemas import UserCreate, UserRead, Token, RefreshToken
 from ..models import User
@@ -21,9 +24,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+# If you want a dedicated limiter instead of re-importing the global one:
+limiter = Limiter(key_func=get_remote_address)
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+@limiter.limit("20/minute")
+async def register_user(user_in: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(User).where(
             (User.username == user_in.username) | (User.email == user_in.email)
@@ -49,7 +55,8 @@ async def register_user(user_in: UserCreate, db: AsyncSession = Depends(get_db))
 
 
 @router.post("/login", response_model=Token)
-async def login_for_tokens(user_in: UserCreate, db: AsyncSession = Depends(get_db)):
+@limiter.limit("20/minute")
+async def login_for_tokens(user_in: UserCreate, request: Request, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.username == user_in.username))
     user = result.scalar_one_or_none()
     if not user or not verify_password(user_in.password, user.password_hash):
@@ -70,7 +77,9 @@ async def login_for_tokens(user_in: UserCreate, db: AsyncSession = Depends(get_d
 
 
 @router.post("/refresh", response_model=Token)
+@limiter.limit("20/minute")
 async def refresh_access_token(
+    request: Request,
     refresh_token: RefreshToken,  # Expect JSON body: { "refresh_token": "..." }
 ):
     """
@@ -97,7 +106,9 @@ async def refresh_access_token(
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
 async def logout_current_token(
+    request: Request,
     access_token: str = Depends(oauth2_scheme),
     # Optionally accept a JSON body with { "refresh_token": "..." } to revoke that too
     refresh_token: RefreshToken | None = None,
@@ -117,5 +128,6 @@ async def logout_current_token(
 
 
 @router.get("/me", response_model=UserRead)
-async def read_users_me(current_user: User = Depends(get_current_user)):
+@limiter.limit("20/minute")
+async def read_users_me(request: Request, current_user: User = Depends(get_current_user)):
     return current_user
