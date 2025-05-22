@@ -16,7 +16,7 @@ from fastapi_cache.decorator import cache
 from ..schemas import EventCreate, EventRead, EventUpdate, EventBatchCreate
 from ..models import Event, User, EventPermission, EventVersion
 from ..db.session import get_db
-from ..dependencies import get_current_user
+from ..dependencies import get_current_user, require_editor_or_above, require_owner
 from ..utils.versioning import record_event_version
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -30,7 +30,7 @@ async def create_event(
     event_in: EventCreate,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user: User = Depends(require_editor_or_above),  # Only EDITOR and OWNER can create
 ):
     """
     Create a new (possibly recurring) event. If `recurrence_rule` is provided,
@@ -145,8 +145,9 @@ async def update_event(
     event_id: int,
     event_update: EventUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_editor_or_above),
 ):
+    """Update an event with proper async handling"""
     result = await db.execute(select(Event).where(Event.id == event_id))
     event = result.scalar_one_or_none()
 
@@ -154,7 +155,7 @@ async def update_event(
         raise HTTPException(status_code=404, detail="Event not found")
 
     if event.creator_id != current_user.id:
-        # Optional: also allow if user has can_edit permission
+        # Check for edit permission
         perm_result = await db.execute(
             select(EventPermission).where(
                 EventPermission.event_id == event_id,
@@ -166,12 +167,19 @@ async def update_event(
         if not permission:
             raise HTTPException(status_code=403, detail="You don't have permission to edit this event.")
 
-    for attr, value in event_update.dict(exclude_unset=True).items():
-        setattr(event, attr, value)
+    # Update fields
+    update_data = event_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(event, field, value)
 
-    await db.flush()  # Update timestamp
+    # Create version before commit
+    await db.flush()
     await record_event_version(db, event, current_user.id)
+    
+    # Commit all changes
     await db.commit()
+    
+    # Get fresh event data
     await db.refresh(event)
     return event
 
@@ -182,7 +190,7 @@ async def delete_event(
     event_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_owner),  # Only OWNER can delete
 ):
     """
     Delete an event by ID. Only the creator can delete it.

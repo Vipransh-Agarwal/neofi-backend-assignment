@@ -1,3 +1,4 @@
+from enum import Enum
 from datetime import datetime
 from sqlalchemy import (
     Column,
@@ -10,6 +11,7 @@ from sqlalchemy import (
     JSON,
     Index,
     UniqueConstraint,
+    Enum as SQLEnum
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -17,6 +19,11 @@ from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
 
+
+class RoleType(str, Enum):
+    OWNER = "owner"
+    EDITOR = "editor"
+    VIEWER = "viewer"
 
 class User(Base):
     __tablename__ = "users"
@@ -26,6 +33,7 @@ class User(Base):
     email = Column(String(120), unique=True, nullable=False, index=True)
     password_hash = Column(String(128), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    role = Column(SQLEnum(RoleType), nullable=False, default=RoleType.VIEWER)
 
     # relationship to events the user created
     events = relationship("Event", back_populates="creator")

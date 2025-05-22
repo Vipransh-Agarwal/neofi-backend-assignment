@@ -1,19 +1,27 @@
 from datetime import datetime
 from pydantic import BaseModel, EmailStr
 from typing import Optional, List, Any
+from enum import Enum
 
 # ─── User schemas ──────────────────────────────────────────────────────────
+
+class RoleType(str, Enum):
+    OWNER = "owner"
+    EDITOR = "editor"
+    VIEWER = "viewer"
 
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
     password: str
+    role: Optional[RoleType] = RoleType.VIEWER  # Add this line
 
 class UserRead(BaseModel):
     id: int
     username: str
     email: EmailStr
     created_at: datetime
+    role: RoleType  # Add this line
 
     class Config:
         orm_mode = True
