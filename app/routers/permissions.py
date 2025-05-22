@@ -1,8 +1,11 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from datetime import datetime
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..models import Event, User, EventPermission
 from ..schemas import UserRead, PermissionRead  # to return user info in list
@@ -11,12 +14,16 @@ from ..dependencies import get_current_user
 
 router = APIRouter(prefix="/api/events", tags=["permissions"])
 
+# If you want a dedicated limiter instead of re-importing the global one:
+limiter = Limiter(key_func=get_remote_address)
 
 @router.post("/{event_id}/share", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
 async def share_event(
     event_id: int,
     user_id: int,
     can_edit: bool,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -71,8 +78,10 @@ async def share_event(
     "/{event_id}/permissions",
     response_model=List[PermissionRead],
 )
+@limiter.limit("20/minute")
 async def list_permissions(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -133,9 +142,11 @@ async def list_permissions(
 
 
 @router.delete("/{event_id}/permissions/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("20/minute")
 async def revoke_permission(
     event_id: int,
     user_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -166,10 +177,12 @@ async def revoke_permission(
     "/{event_id}/permissions/{user_id}",
     response_model=PermissionRead,
 )
+@limiter.limit("20/minute")
 async def update_permission(
     event_id: int,
     user_id: int,
     can_edit: bool,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):

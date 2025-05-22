@@ -1,7 +1,10 @@
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from ..models import Event, EventPermission, EventVersion, EventChange
 from ..db.session import get_db
@@ -10,10 +13,14 @@ from ..utils.versioning import record_event_version
 
 router = APIRouter(prefix="/api/events", tags=["versions"])
 
+# If you want a dedicated limiter instead of re-importing the global one:
+limiter = Limiter(key_func=get_remote_address)
 
 @router.get("/{event_id}/history", response_model=List[Dict[str, Any]])
+@limiter.limit("20/minute")
 async def list_versions(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -53,8 +60,10 @@ async def list_versions(
 
 
 @router.get("/{event_id}/history/{version_number}", response_model=Dict[str, Any])
+@limiter.limit("20/minute")
 async def get_version(
     event_id: int,
+    request: Request,
     version_number: int,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
@@ -97,10 +106,12 @@ async def get_version(
 
 
 @router.get("/{event_id}/diff/{older}/{newer}", response_model=List[Dict[str, Any]])
+@limiter.limit("20/minute")
 async def get_diff(
     event_id: int,
     older: int,
     newer: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -159,9 +170,11 @@ async def get_diff(
     "/{event_id}/rollback/{version_number}",
     response_model=Dict[str, Any],
 )
+@limiter.limit("20/minute")
 async def rollback_event(
     event_id: int,
     version_number: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
@@ -227,8 +240,10 @@ async def rollback_event(
     "/{event_id}/changelog",
     response_model=List[Dict[str, Any]],
 )
+@limiter.limit("20/minute")
 async def get_changelog(
     event_id: int,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
