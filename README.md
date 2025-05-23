@@ -75,8 +75,18 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
 2. **Install Dependencies**
 
-   **Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.**
+   Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.
 
+   Example:
+   ```env
+   # Windows
+   $env:DATABASE_URL = "postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events"
+
+   # macOS/Linux
+   export DATABASE_URL="postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events"
+   ```
+
+   Moving On...
    ### Windows
    ```powershell
    # Install Python dependencies
