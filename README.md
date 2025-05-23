@@ -53,6 +53,9 @@ A RESTful API for an event scheduling application with collaborative editing fea
    - macOS: `brew install redis`
    - Linux: `sudo apt-get install redis-server`
 
+4. **Postman**
+   - Download and install from [Download Postman](https://www.postman.com/downloads/)
+
 ## Project Setup
 
 1. **Environment Setup**
@@ -72,14 +75,13 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
 2. **Install Dependencies**
 
+   Make sure to first create and activate a python virtual environment
+
    ### Windows
    ```powershell
    # Install Python dependencies
    pip install zstandard
    pip install poetry
-   
-   # Configure Poetry to create virtual environment in project
-   poetry config virtualenvs.in-project true
    
    # Install project dependencies
    poetry install
@@ -91,14 +93,11 @@ A RESTful API for an event scheduling application with collaborative editing fea
    pip3 install zstandard
    pip3 install poetry
    
-   # Configure Poetry to create virtual environment in project
-   poetry config virtualenvs.in-project true
-   
    # Install project dependencies
    poetry install
    ```
 
-3. **Database Migrations**
+4. **Database Migrations**
    ```bash
    # Create alembic migrations directory (if not present)
    poetry run alembic init alembic
@@ -107,7 +106,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    poetry run alembic upgrade head
    ```
 
-4. **Start the Application**
+5. **Start the Application**
    ```bash
    # Windows/macOS/Linux
    poetry run uvicorn app.main:app --reload
@@ -148,18 +147,6 @@ Make sure to check and update the terminal environment as well as update `.env` 
 - GET `/api/health` - Basic health check
 - GET `/api/health/detailed` - Detailed system status
 
-## Testing
-
-Run the test suite:
-```powershell
-poetry run pytest
-```
-
-## Documentation
-
-- API Documentation (Swagger): http://localhost:8000/docs 
-- Alternative Documentation (ReDoc): http://localhost:8000/redoc
-
 ## Project Structure
 
 ```
@@ -172,6 +159,5 @@ neofi-backend-assignment/
 │   ├── routers/         # API routes
 │   ├── utils/           # Utility functions
 │   └── main.py         # Application entry point
-├── tests/              # Test suite
 └── logs/               # Application logs
 ```
