@@ -13,11 +13,20 @@ from slowapi.util import get_remote_address
 
 from fastapi_cache.decorator import cache
 
-from ..schemas import EventCreate, EventRead, EventUpdate, EventBatchCreate
+from ..schemas import (
+    EventCreate, 
+    EventRead, 
+    EventUpdate, 
+    EventBatchCreate,
+    EventConflict,
+    ConflictResponse
+)
 from ..models import Event, User, EventPermission, EventVersion
 from ..db.session import get_db
 from ..dependencies import get_current_user, require_editor_or_above, require_owner
 from ..utils.versioning import record_event_version
+from ..utils.conflicts import detect_event_conflicts  # Add this import at the top
+from ..utils.notifications import notification_manager
 
 router = APIRouter(prefix="/api/events", tags=["events"])
 
@@ -36,6 +45,30 @@ async def create_event(
     Create a new (possibly recurring) event. If `recurrence_rule` is provided,
     the server will store it and use it for occurrence generation later.
     """
+    # Add conflict detection before creating event
+    conflicts = await detect_event_conflicts(
+        db,
+        event_in.start_datetime,
+        event_in.end_datetime,
+        current_user.id
+    )
+    
+    if conflicts:        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=ConflictResponse(
+                message="Event conflicts with existing events",
+                conflicts=[
+                    EventConflict(
+                        id=e.id,
+                        title=e.title,
+                        start=e.start_datetime,
+                        end=e.end_datetime
+                    )
+                    for e in conflicts
+                ]
+            ).model_dump()
+        )
+
     new_event = Event(
         title=event_in.title,
         description=event_in.description,
@@ -52,11 +85,19 @@ async def create_event(
     # Record the first version (snapshot) as usual
     await record_event_version(db, new_event, current_user.id)
 
+    # After successful event creation
+    await notification_manager.notify_event_change(
+        event=new_event,
+        change_type="created",
+        changed_by=current_user
+    )
+    
     return EventRead.model_validate(new_event)
 
 
 @router.get("", response_model=List[EventRead])
 @limiter.limit("20/minute")
+@cache(expire=60)  # Cache for 1 minute
 async def list_events(
     request: Request,
     limit: int = Query(20, ge=1, le=100),
@@ -167,6 +208,35 @@ async def update_event(
         if not permission:
             raise HTTPException(status_code=403, detail="You don't have permission to edit this event.")
 
+    # If updating date/time, check for conflicts
+    if event_update.start_datetime or event_update.end_datetime:
+        new_start = event_update.start_datetime or event.start_datetime
+        new_end = event_update.end_datetime or event.end_datetime
+        
+        conflicts = await detect_event_conflicts(
+            db,
+            new_start,
+            new_end,
+            current_user.id,
+            exclude_event_id=event_id
+        )
+        
+        if conflicts:            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=ConflictResponse(
+                    message="New time conflicts with existing events",
+                    conflicts=[
+                        EventConflict(
+                            id=e.id,
+                            title=e.title,
+                            start=e.start_datetime,
+                            end=e.end_datetime
+                        )
+                        for e in conflicts
+                    ]
+                ).model_dump()
+            )
+
     # Update fields
     update_data = event_update.dict(exclude_unset=True)
     for field, value in update_data.items():
@@ -181,6 +251,14 @@ async def update_event(
     
     # Get fresh event data
     await db.refresh(event)
+
+    # After successful event update
+    await notification_manager.notify_event_change(
+        event=event,
+        change_type="updated",
+        changed_by=current_user
+    )
+    
     return event
 
 
@@ -200,6 +278,13 @@ async def delete_event(
     if not event or event.creator_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Event not found")
 
+    # Before deletion, notify subscribers
+    await notification_manager.notify_event_change(
+        event=event,
+        change_type="deleted",
+        changed_by=current_user
+    )
+
     await db.delete(event)
     await db.commit()
     return None  # 204 No Content
@@ -213,9 +298,31 @@ async def batch_create_events(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Create multiple events in a single request. If any event in the batch fails validation, the entire batch is rolled back.
-    """
+    # Check each event for conflicts before creating any
+    for event in batch_in.events:
+        conflicts = await detect_event_conflicts(
+            db,
+            event.start_datetime,
+            event.end_datetime,
+            current_user.id
+        )
+        
+        if conflicts:            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=ConflictResponse(
+                    message=f"Event '{event.title}' conflicts with existing events",
+                    conflicts=[
+                        EventConflict(
+                            id=e.id,
+                            title=e.title,
+                            start=e.start_datetime,
+                            end=e.end_datetime
+                        )
+                        for e in conflicts
+                    ]
+                ).model_dump()
+            )
+
     new_events = []
     for item in batch_in.events:
         if item.end_datetime <= item.start_datetime:

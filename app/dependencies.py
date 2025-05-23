@@ -1,5 +1,5 @@
 import os
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, WebSocket
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from typing import Optional, List
@@ -134,3 +134,19 @@ def check_roles(allowed_roles: List[RoleType]):
 require_owner = check_roles([RoleType.OWNER])
 require_editor_or_above = check_roles([RoleType.OWNER, RoleType.EDITOR])
 require_any_role = check_roles([RoleType.OWNER, RoleType.EDITOR, RoleType.VIEWER])
+
+async def get_current_user_ws(
+    websocket: WebSocket,
+    token: str = None
+):
+    if not token:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
+        
+    try:
+        payload = decode_access_token(token)
+        user_id = int(payload.get("sub"))
+        return user_id
+    except:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return None
