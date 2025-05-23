@@ -109,8 +109,17 @@ A RESTful API for an event scheduling application with collaborative editing fea
    echo $env:SECRET_KEY
    ```
 
-   Moving On, go inside repo directory `neofi-backend-assignment`, run following commands
+   Moving On, go inside repo directory `neofi-backend-assignment`, run following commands:
+   ```env
+   # Windows
+   cd .\neofi-backend-assignment\
+
+   # macOS/Linux
+   cd ./neofi-backend-assignment/
+   ```
    > Make sure you are inside `neofi-backend-assignment` directory, otherwise `poetry` commands may not work
+   
+   Now run the following commands
    ### Windows
    ```powershell
    # Install Python dependencies
