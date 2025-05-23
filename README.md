@@ -139,6 +139,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    # Install project dependencies
    poetry install --no-root
    ```
+   > **Important**: If you see an error like: ```pyproject.toml changed significantly since poetry.lock was last generated. Run `poetry lock` to fix the lock file.```, then do not panic, application will still work. First run `poetry lock`, as the error says, then run `poetry install --no-root` again
 
 6. **Database Migrations**
    ```bash
@@ -151,7 +152,9 @@ A RESTful API for an event scheduling application with collaborative editing fea
    # Windows/macOS/Linux
    poetry run uvicorn app.main:app --reload
    ```
-
+   > **Important**: If you see a bunch of errors that says something like: ```raise ConnectionError(self._error_message(e))
+redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Connect call failed ('::1', 6379, 0, 0), [Errno 10061] Connect call failed ('127.0.0.1', 6379) connecting to localhost:6379.```, then your `redis` is not up. Run `redis-server` in a separate termial (wsl for windows) and then come back to main terminal and run `poetry run uvicorn app.main:app --reload` again
+ 
 ## API Endpoints
 
 ### Authentication
@@ -183,6 +186,9 @@ A RESTful API for an event scheduling application with collaborative editing fea
 ### Health Check
 - GET `/api/health` - Basic health check
 - GET `/api/health/detailed` - Detailed system status
+
+### Websocket Testing
+- Go to: http://localhost:8000/test
 
 ## Project Structure
 
