@@ -58,7 +58,14 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
 ## Project Setup
 
-1. **Environment Setup**
+1. **Clone Repo**
+
+    ```env
+   git clone https://github.com/Vipransh-Agarwal/neofi-backend-assignment.git
+   ```
+   > You could have done this at very start as well, but no issues, do it now
+
+2. **Environment Setup**
    Create a `.env` file in the project root:
    ```env
    # Windows
@@ -73,7 +80,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
    > **Important**: Replace `<YOUR_POSTGRES_PASSWORD>` with your actual PostgreSQL password and `<YOUR_SECRET_KEY>` with a secure random string. Never commit these values to version control.
 
-2. **Install Dependencies**
+3. **Install Dependencies**
 
    Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.
 
