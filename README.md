@@ -98,6 +98,17 @@ A RESTful API for an event scheduling application with collaborative editing fea
    ```
    This will set up environment keys in your local terminal as well
 
+   To check it the environment variables are set:
+   ```env
+   # Windows
+   $env:DATABASE_URL
+   $env:SECRET_KEY
+
+   # macOS/Linux
+   echo $env:DATABASE_URL
+   echo $env:SECRET_KEY
+   ```
+
    Moving On, go inside repo directory `neofi-backend-assignment`, run following commands
    > Make sure you are inside `neofi-backend-assignment` directory, otherwise `poetry` commands may not work
    ### Windows
