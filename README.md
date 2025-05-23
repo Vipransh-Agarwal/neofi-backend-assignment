@@ -99,9 +99,6 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
 4. **Database Migrations**
    ```bash
-   # Create alembic migrations directory (if not present)
-   poetry run alembic init alembic
-
    # Run migrations
    poetry run alembic upgrade head
    ```
