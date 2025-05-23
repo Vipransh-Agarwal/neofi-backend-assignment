@@ -94,7 +94,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    pip3 install poetry
    
    # Install project dependencies
-   poetry install
+   poetry install --no-root
    ```
 
 4. **Database Migrations**
