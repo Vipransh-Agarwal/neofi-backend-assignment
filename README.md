@@ -49,7 +49,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
      ```
 
 3. **Redis**
-   - Windows: Download from [Redis for Windows](https://github.com/microsoftarchive/redis/releases)
+   - Windows: Follow [How to Install and Use Redis on Windows](https://redis.io/blog/install-redis-windows-11/)
    - macOS: `brew install redis`
    - Linux: `sudo apt-get install redis-server`
 
@@ -59,16 +59,16 @@ A RESTful API for an event scheduling application with collaborative editing fea
    Create a `.env` file in the project root:
    ```env
    # Windows
-   DATABASE_URL=postgresql+asyncpg://postgres:your_password@localhost/neofi_events
+   DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events
    REDIS_URL=redis://localhost:6379/0
-   SECRET_KEY=your-secret-key-here
-   ACCESS_TOKEN_EXPIRE_MINUTES=30
-   REFRESH_TOKEN_EXPIRE_DAYS=7
+   SECRET_KEY=<YOUR_SECRET_KEY>
 
    # macOS/Linux - same format
-   DATABASE_URL=postgresql+asyncpg://postgres:your_password@localhost/neofi_events
+   DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events
    # ... rest remains the same
    ```
+
+   > **Important**: Replace `<YOUR_POSTGRES_PASSWORD>` with your actual PostgreSQL password and `<YOUR_SECRET_KEY>` with a secure random string. Never commit these values to version control.
 
 2. **Install Dependencies**
 
