@@ -84,7 +84,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    pip install poetry
    
    # Install project dependencies
-   poetry install
+   poetry install --no-root
    ```
 
    ### macOS/Linux
