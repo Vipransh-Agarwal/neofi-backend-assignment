@@ -29,67 +29,92 @@ A RESTful API for an event scheduling application with collaborative editing fea
 ## Prerequisites
 
 1. **Python 3.11+**
-   ```powershell
-   winget install Python.Python.3.11
+   ```bash
+   # Verify Python installation
+   python --version  # On Windows
+   python3 --version # On macOS/Linux
    ```
 
 2. **PostgreSQL 15+**
-   ```powershell
-   winget install PostgreSQL.PostgreSQL
-   ```
-   After installation:
-   - Create a database: `createdb neofi_events`
+   - Download and install from [PostgreSQL Official Website](https://www.postgresql.org/download/)
+   - Create database:
+     ```bash
+     # Windows (Using psql)
+     psql -U postgres -c "CREATE DATABASE neofi_events"
+     
+     # macOS/Linux
+     createdb neofi_events
+     # OR
+     psql -U postgres -c "CREATE DATABASE neofi_events"
+     ```
 
 3. **Redis**
-   ```powershell
-   # Using WSL2 on Windows
-   wsl --install
-   wsl
-   sudo apt-get update
-   sudo apt-get install redis-server
-   sudo service redis-server start
-   ```
+   - Windows: Download from [Redis for Windows](https://github.com/microsoftarchive/redis/releases)
+   - macOS: `brew install redis`
+   - Linux: `sudo apt-get install redis-server`
 
 ## Project Setup
 
 1. **Environment Setup**
    Create a `.env` file in the project root:
    ```env
+   # Windows
    DATABASE_URL=postgresql+asyncpg://postgres:your_password@localhost/neofi_events
    REDIS_URL=redis://localhost:6379/0
    SECRET_KEY=your-secret-key-here
    ACCESS_TOKEN_EXPIRE_MINUTES=30
    REFRESH_TOKEN_EXPIRE_DAYS=7
+
+   # macOS/Linux - same format
+   DATABASE_URL=postgresql+asyncpg://postgres:your_password@localhost/neofi_events
+   # ... rest remains the same
    ```
 
 2. **Install Dependencies**
+
+   ### Windows
    ```powershell
-   # Install zstandard first (required for some dependencies)
+   # Install Python dependencies
    pip install zstandard
-
-   # Install Poetry
    pip install poetry
+   
+   # Configure Poetry to create virtual environment in project
+   poetry config virtualenvs.in-project true
+   
+   # Install project dependencies
+   poetry install
+   ```
 
-   # Initialize poetry (if not already done)
-   poetry init
-
+   ### macOS/Linux
+   ```bash
+   # Install Python dependencies
+   pip3 install zstandard
+   pip3 install poetry
+   
+   # Configure Poetry to create virtual environment in project
+   poetry config virtualenvs.in-project true
+   
    # Install project dependencies
    poetry install
    ```
 
 3. **Database Migrations**
-   ```powershell
-   # Initialize alembic (if not done)
-   alembic init alembic
+   ```bash
+   # Create alembic migrations directory (if not present)
+   poetry run alembic init alembic
 
    # Run migrations
-   alembic upgrade head
+   poetry run alembic upgrade head
    ```
 
 4. **Start the Application**
-   ```powershell
-   uvicorn app.main:app --reload
+   ```bash
+   # Windows/macOS/Linux
+   poetry run uvicorn app.main:app --reload
    ```
+
+## Environment Variables
+Make sure to check and update the terminal environment as well as update `.env` file with your actual database password and a secure SECRET_KEY.
 
 ## API Endpoints
 
