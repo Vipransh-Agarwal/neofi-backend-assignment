@@ -72,7 +72,6 @@ A RESTful API for an event scheduling application with collaborative editing fea
    ```env
    # Windows
    DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events
-   REDIS_URL=redis://localhost:6379/0
    SECRET_KEY=<YOUR_SECRET_KEY>
 
    # macOS/Linux - same format
@@ -98,7 +97,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    ```
    This will set up environment keys in your local terminal as well
 
-   To check it the environment variables are set:
+   To check if the environment variables are correctly set:
    ```env
    # Windows
    $env:DATABASE_URL
@@ -185,9 +184,8 @@ redis.exceptions.ConnectionError: Error Multiple exceptions: [Errno 10061] Conne
 
 ### Health Check
 - GET `/api/health` - Basic health check
-- GET `/api/health/detailed` - Detailed system status
 
-### Websocket Testing
+### WebSocket Testing
 - Go to: http://localhost:8000/test
 
 ## Project Structure
