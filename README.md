@@ -75,7 +75,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
 2. **Install Dependencies**
 
-   Make sure to first create and activate a python virtual environment
+   **Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.**
 
    ### Windows
    ```powershell
@@ -108,9 +108,6 @@ A RESTful API for an event scheduling application with collaborative editing fea
    # Windows/macOS/Linux
    poetry run uvicorn app.main:app --reload
    ```
-
-## Environment Variables
-Make sure to check and update the terminal environment as well as update `.env` file with your actual database password and a secure SECRET_KEY.
 
 ## API Endpoints
 
