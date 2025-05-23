@@ -52,14 +52,23 @@ A RESTful API for an event scheduling application with collaborative editing fea
    - Windows: Follow [How to Install and Use Redis on Windows](https://redis.io/blog/install-redis-windows-11/)
    - macOS: `brew install redis`
    - Linux: `sudo apt-get install redis-server`
+   - Start the redis server in separate terminal (For Windows it will be in wsl terminal)
 
 4. **Postman**
    - Download and install from [Download Postman](https://www.postman.com/downloads/)
 
 ## Project Setup
 
-1. **Environment Setup**
-   Create a `.env` file in the project root:
+1. **Clone Repo**
+
+    ```env
+   git clone https://github.com/Vipransh-Agarwal/neofi-backend-assignment.git
+   ```
+   > You could have done this at very start as well, but no issues, do it now
+
+2. **Environment Setup**
+
+   Update the `.env` file in the project root:
    ```env
    # Windows
    DATABASE_URL=postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events
@@ -73,10 +82,44 @@ A RESTful API for an event scheduling application with collaborative editing fea
 
    > **Important**: Replace `<YOUR_POSTGRES_PASSWORD>` with your actual PostgreSQL password and `<YOUR_SECRET_KEY>` with a secure random string. Never commit these values to version control.
 
-2. **Install Dependencies**
+4. **Install Dependencies**
 
-   **Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.**
+   Make sure to first create and activate a python virtual environment. Also check and update the terminal environment as well as update `.env` file with your DATABASE_URL and SECRET_KEY, the one you made `.env` file with.
 
+   Example:
+   ```env
+   # Windows
+   $env:DATABASE_URL = "postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events"
+   $env:SECRET_KEY = "<YOUR_SECRET_KEY>"
+
+   # macOS/Linux
+   export DATABASE_URL="postgresql+asyncpg://postgres:<YOUR_POSTGRES_PASSWORD>@localhost/neofi_events"
+   export SECRET_KEY = "<YOUR_SECRET_KEY>"
+   ```
+   This will set up environment keys in your local terminal as well
+
+   To check it the environment variables are set:
+   ```env
+   # Windows
+   $env:DATABASE_URL
+   $env:SECRET_KEY
+
+   # macOS/Linux
+   echo $env:DATABASE_URL
+   echo $env:SECRET_KEY
+   ```
+
+   Moving On, go inside repo directory `neofi-backend-assignment`, run following commands:
+   ```env
+   # Windows
+   cd .\neofi-backend-assignment\
+
+   # macOS/Linux
+   cd ./neofi-backend-assignment/
+   ```
+   > Make sure you are inside `neofi-backend-assignment` directory, otherwise `poetry` commands may not work
+   
+   Now run the following commands
    ### Windows
    ```powershell
    # Install Python dependencies
@@ -84,7 +127,7 @@ A RESTful API for an event scheduling application with collaborative editing fea
    pip install poetry
    
    # Install project dependencies
-   poetry install
+   poetry install --no-root
    ```
 
    ### macOS/Linux
@@ -94,16 +137,16 @@ A RESTful API for an event scheduling application with collaborative editing fea
    pip3 install poetry
    
    # Install project dependencies
-   poetry install
+   poetry install --no-root
    ```
 
-4. **Database Migrations**
+6. **Database Migrations**
    ```bash
    # Run migrations
    poetry run alembic upgrade head
    ```
 
-5. **Start the Application**
+7. **Start the Application**
    ```bash
    # Windows/macOS/Linux
    poetry run uvicorn app.main:app --reload
